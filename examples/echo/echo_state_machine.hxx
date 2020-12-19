@@ -23,126 +23,160 @@ limitations under the License.
 #include <cassert>
 #include <iostream>
 #include <mutex>
+#include <fstream>
+#include <iostream>
 
+using namespace std;
 using namespace nuraft;
 
 class echo_state_machine : public state_machine {
 public:
-    echo_state_machine()
-        : last_committed_idx_(0)
-        {}
+	echo_state_machine()
+			: last_committed_idx_(0) {}
 
-    ~echo_state_machine() {}
+	echo_state_machine(int my_id)
+			: last_committed_idx_(0) {
+		my_id_ = my_id;
+		std::cout << "read snp_buf start " << std::endl;
+		ifstream fin("./snp_buf" + std::to_string(this->my_id_) + ".data");
 
-    ptr<buffer> pre_commit(const ulong log_idx, buffer& data) {
-        // Extract string from `data.
-        buffer_serializer bs(data);
-        std::string str = bs.get_str();
+		if (fin) {
+			std::streampos fsize = 0;
+			fsize = fin.tellg();
+			fin.seekg(0, std::ios::end);
+			fsize = fin.tellg() - fsize;
+			fin.seekg(0, std::ios::beg);
+			std::cout << "size ()" << std::to_string(fsize) << endl;
+			ptr<buffer> buf2;
+			if (ulong(fsize) > 0x8008) {
+				buf2 = buffer::alloc(ulong(fsize) - ulong(sizeof(uint) * 2));
+			} else {
+				buf2 = buffer::alloc(ulong(fsize) - ulong(sizeof(ushort) * 2));
+			}
+			fin.read((char *) &(*buf2), buf2->container_size());
+			fin.close();
+			std::cout << "read save_config end " << std::endl;
+			last_snapshot_ = snapshot::deserialize(*buf2);
+		}
+	}
 
-        // Just print.
-        std::cout << "pre_commit " << log_idx << ": "
-                  << str << std::endl;
-        return nullptr;
-    }
+	~echo_state_machine() {}
 
-    ptr<buffer> commit(const ulong log_idx, buffer& data) {
-        // Extract string from `data.
-        buffer_serializer bs(data);
-        std::string str = bs.get_str();
+	ptr<buffer> pre_commit(const ulong log_idx, buffer &data) {
+		// Extract string from `data.
+		buffer_serializer bs(data);
+		std::string str = bs.get_str();
 
-        // Just print.
-        std::cout << "commit " << log_idx << ": "
-                  << str << std::endl;
+		// Just print.
+		std::cout << "pre_commit " << log_idx << ": "
+				  << str << std::endl;
+		return nullptr;
+	}
 
-        // Update last committed index number.
-        last_committed_idx_ = log_idx;
-        return nullptr;
-    }
+	ptr<buffer> commit(const ulong log_idx, buffer &data) {
+		// Extract string from `data.
+		buffer_serializer bs(data);
+		std::string str = bs.get_str();
 
-    void rollback(const ulong log_idx, buffer& data) {
-        // Extract string from `data.
-        buffer_serializer bs(data);
-        std::string str = bs.get_str();
+		// Just print.
+		std::cout << "commit " << log_idx << ": "
+				  << str << std::endl;
 
-        // Just print.
-        std::cout << "rollback " << log_idx << ": "
-                  << str << std::endl;
-    }
+		// Update last committed index number.
+		last_committed_idx_ = log_idx;
+		return nullptr;
+	}
 
-    int read_logical_snp_obj(snapshot& s,
-                             void*& user_snp_ctx,
-                             ulong obj_id,
-                             ptr<buffer>& data_out,
-                             bool& is_last_obj)
-    {
-        // Put dummy data.
-        data_out = buffer::alloc( sizeof(int32) );
-        buffer_serializer bs(data_out);
-        bs.put_i32(0);
+	void rollback(const ulong log_idx, buffer &data) {
+		// Extract string from `data.
+		buffer_serializer bs(data);
+		std::string str = bs.get_str();
 
-        is_last_obj = true;
-        return 0;
-    }
+		// Just print.
+		std::cout << "rollback " << log_idx << ": "
+				  << str << std::endl;
+	}
 
-    void save_logical_snp_obj(snapshot& s,
-                              ulong& obj_id,
-                              buffer& data,
-                              bool is_first_obj,
-                              bool is_last_obj)
-    {
-        std::cout << "save snapshot " << s.get_last_log_idx()
-                  << " term " << s.get_last_log_term()
-                  << " object ID " << obj_id << std::endl;
-        // Request next object.
-        obj_id++;
-    }
+	int read_logical_snp_obj(snapshot &s,
+							 void *&user_snp_ctx,
+							 ulong obj_id,
+							 ptr<buffer> &data_out,
+							 bool &is_last_obj) {
+		// Put dummy data.
+		data_out = buffer::alloc(sizeof(int32));
+		buffer_serializer bs(data_out);
+		bs.put_i32(0);
 
-    bool apply_snapshot(snapshot& s) {
-        std::cout << "apply snapshot " << s.get_last_log_idx()
-                  << " term " << s.get_last_log_term() << std::endl;
-        // Clone snapshot from `s`.
-        {   std::lock_guard<std::mutex> l(last_snapshot_lock_);
-            ptr<buffer> snp_buf = s.serialize();
-            last_snapshot_ = snapshot::deserialize(*snp_buf);
-        }
-        return true;
-    }
+		is_last_obj = true;
+		return 0;
+	}
 
-    void free_user_snp_ctx(void*& user_snp_ctx) { }
+	void save_logical_snp_obj(snapshot &s,
+							  ulong &obj_id,
+							  buffer &data,
+							  bool is_first_obj,
+							  bool is_last_obj) {
+		std::cout << "save snapshot " << s.get_last_log_idx()
+				  << " term " << s.get_last_log_term()
+				  << " object ID " << obj_id << std::endl;
+		// Request next object.
+		obj_id++;
+	}
 
-    ptr<snapshot> last_snapshot() {
-        // Just return the latest snapshot.
-        std::lock_guard<std::mutex> l(last_snapshot_lock_);
-        return last_snapshot_;
-    }
+	bool apply_snapshot(snapshot &s) {
+		std::cout << "apply snapshot " << s.get_last_log_idx()
+				  << " term " << s.get_last_log_term() << std::endl;
+		// Clone snapshot from `s`.
+		{
+			std::lock_guard<std::mutex> l(last_snapshot_lock_);
+			ptr<buffer> snp_buf = s.serialize();
+			last_snapshot_ = snapshot::deserialize(*snp_buf);
+		}
+		return true;
+	}
 
-    ulong last_commit_index() {
-        return last_committed_idx_;
-    }
+	void free_user_snp_ctx(void *&user_snp_ctx) {}
 
-    void create_snapshot(snapshot& s,
-                         async_result<bool>::handler_type& when_done)
-    {
-        std::cout << "create snapshot " << s.get_last_log_idx()
-                  << " term " << s.get_last_log_term() << std::endl;
-        // Clone snapshot from `s`.
-        {   std::lock_guard<std::mutex> l(last_snapshot_lock_);
-            ptr<buffer> snp_buf = s.serialize();
-            last_snapshot_ = snapshot::deserialize(*snp_buf);
-        }
-        ptr<std::exception> except(nullptr);
-        bool ret = true;
-        when_done(ret, except);
-    }
+	ptr<snapshot> last_snapshot() {
+		// Just return the latest snapshot.
+		std::lock_guard<std::mutex> l(last_snapshot_lock_);
+		return last_snapshot_;
+	}
+
+	ulong last_commit_index() {
+		return last_committed_idx_;
+	}
+
+	void create_snapshot(snapshot &s,
+						 async_result<bool>::handler_type &when_done) {
+		std::cout << "create snapshot " << s.get_last_log_idx()
+				  << " term " << s.get_last_log_term() << std::endl;
+		// Clone snapshot from `s`.
+		{
+			std::lock_guard<std::mutex> l(last_snapshot_lock_);
+			ptr<buffer> snp_buf = s.serialize();
+			std::cout << "write snp_buf start " << std::endl;
+			ofstream fout("./snp_buf" + std::to_string(this->my_id_) + ".data");
+			fout.write((char *) &(*snp_buf), snp_buf->container_size());
+			fout.close();
+			std::cout << "write save_config end " << std::endl;
+			last_snapshot_ = snapshot::deserialize(*snp_buf);
+		}
+		ptr<std::exception> except(nullptr);
+		bool ret = true;
+		when_done(ret, except);
+	}
 
 private:
-    // Last committed Raft log number.
-    std::atomic<uint64_t> last_committed_idx_;
+	// Last committed Raft log number.
+	std::atomic<uint64_t> last_committed_idx_;
 
-    // Last snapshot.
-    ptr<snapshot> last_snapshot_;
+	// Last snapshot.
+	ptr<snapshot> last_snapshot_;
 
-    // Mutex for last snapshot.
-    std::mutex last_snapshot_lock_;
+	// Mutex for last snapshot.
+	std::mutex last_snapshot_lock_;
+
+	int my_id_;
 };
 

@@ -22,52 +22,69 @@ limitations under the License.
 #include <atomic>
 #include <map>
 #include <mutex>
+#include <fstream>
+#include <iostream>
+
+using namespace std;
 
 namespace nuraft {
 
 class inmem_log_store : public log_store {
 public:
-    inmem_log_store();
+	inmem_log_store();
 
-    ~inmem_log_store();
+	inmem_log_store(int my_id);
 
-    __nocopy__(inmem_log_store);
+	~inmem_log_store();
 
-    ulong next_slot() const;
+__nocopy__(inmem_log_store);
 
-    ulong start_index() const;
+	ulong next_slot() const;
 
-    ptr<log_entry> last_entry() const;
+	ulong start_index() const;
 
-    ulong append(ptr<log_entry>& entry);
+	ptr<log_entry> last_entry() const;
 
-    void write_at(ulong index, ptr<log_entry>& entry);
+	ulong append(ptr<log_entry> &entry);
 
-    ptr<std::vector<ptr<log_entry>>> log_entries(ulong start, ulong end);
+	void write_at(ulong index, ptr<log_entry> &entry);
 
-    ptr<std::vector<ptr<log_entry>>> log_entries_ext(
-            ulong start, ulong end, ulong batch_size_hint_in_bytes = 0);
+	ptr<std::vector<ptr<log_entry>>> log_entries(ulong start, ulong end);
 
-    ptr<log_entry> entry_at(ulong index);
+	ptr<std::vector<ptr<log_entry>>> log_entries_ext(
+			ulong start, ulong end, ulong batch_size_hint_in_bytes = 0);
 
-    ulong term_at(ulong index);
+	ptr<log_entry> entry_at(ulong index);
 
-    ptr<buffer> pack(ulong index, int32 cnt);
+	ulong term_at(ulong index);
 
-    void apply_pack(ulong index, buffer& pack);
+	ptr<buffer> pack(ulong index, int32 cnt);
 
-    bool compact(ulong last_log_index);
+	void apply_pack(ulong index, buffer &pack);
 
-    bool flush() { return true; }
+	bool compact(ulong last_log_index);
 
-    void close();
+	bool flush() {
+		std::cout << "flush" << std::endl;
+		save();
+		std::cout << "flush finish" << std::endl;
+		return true;
+	}
+
+	void close();
+
+	void save();
+
+	void init();
 
 private:
-    static ptr<log_entry> make_clone(const ptr<log_entry>& entry);
+	int my_id_;
 
-    std::map<ulong, ptr<log_entry>> logs_;
-    mutable std::mutex logs_lock_;
-    std::atomic<ulong> start_idx_;
+	static ptr<log_entry> make_clone(const ptr<log_entry> &entry);
+
+	std::map<ulong, ptr<log_entry>> logs_;
+	mutable std::mutex logs_lock_;
+	std::atomic<ulong> start_idx_;
 };
 
 }
